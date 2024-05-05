@@ -29,7 +29,10 @@ def text_extractor_mapper(article_ids, CORPUS ):
     return papers
 
 @task
-def get_pdf_file_names(CORPUS, BUCKET=get_default_bucket()):
+def get_pdf_file_names(CORPUS, BUCKET=get_default_bucket(), params=None):
+    if CORPUS is None:
+        CORPUS = params['CORPUS']
+        logger.info(f"corpus: {CORPUS}")
     file_list = list_files_from_s3(BUCKET, get_by_nc_nd(CORPUS))
     file_list.extend(list_files_from_s3(BUCKET, get_by_sa(CORPUS)))
     file_list.extend(list_files_from_s3(BUCKET, get_by(CORPUS)))
@@ -38,13 +41,13 @@ def get_pdf_file_names(CORPUS, BUCKET=get_default_bucket()):
     return file_list
 
 @task.virtualenv(
-    task_id="extract_pdf", requirements=["pymupdf==1.22.5"], system_site_packages=True, max_active_tis_per_dagrun=5
+    task_id="extract_pdf", requirements=["pymupdf>=1.22.5"], system_site_packages=True, max_active_tis_per_dagrun=5
 )
-def convert_pdf_to_text(files, CORPUS):
+def convert_pdf_to_text(files, CORPUS, params=None):
     import os
     import pathlib
     import fitz
-       
+
     from airflow.providers.amazon.aws.hooks.s3 import S3Hook
     s3_hook = S3Hook(aws_conn_id="minio_airflow")
     
@@ -106,7 +109,11 @@ def convert_pdf_to_text(files, CORPUS):
     		        filename=txt_file_name, 
     		        replace=True, 
                 ) 
-        
+
+    if CORPUS is None:
+        CORPUS = params['CORPUS']
+        logger.info(f"corpus: {CORPUS}")    
+
     logger.info(files)
 
     for file in files:

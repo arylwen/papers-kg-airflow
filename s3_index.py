@@ -7,15 +7,15 @@ from datetime import timedelta
 
 from airflow.decorators import dag
 
-from lib.corpus_cleanup_tasks import (
-    text_cleaner_mapper,
-    get_raw_txt_file_names
+from lib.corpus_index_tasks import (
+    text_indexer_mapper,
+    get_cleaned_txt_file_names
 )
 
 import logging
 logger = logging.getLogger(__name__)
 
-CORPUS = 'arxiv_cl'
+#CORPUS = 'aiml'
 
 DEFAULT_ARGS = {
     'owner': 'Airflow',
@@ -29,19 +29,22 @@ DEFAULT_ARGS = {
 }
 
 '''
-	Checks the mastodon bot account for new papers posted.
-	Download pdf files and upload them to S3
+	Indexes clean up text files into a llama_index knowledge graph.
+    Uses s3 for document and index storage.
 '''
 @dag(
-    dag_id="raw_text_to_clean_text_arxiv_cl",
+    dag_id=f"s3_index",
     default_args=DEFAULT_ARGS,
-    description="DAG for converting cleaning raw txt files for the arxiv_cl corpus.",
+    description=f"DAG for indexing cleaned up text files for the any corpus.",
     schedule=None,
     catchup=False,
-    max_active_runs=1
+    max_active_runs=1,
+    params={
+         "CORPUS": 'docs',
+     },
 )
-def cleanup_raw_txt():    
-    file_list = get_raw_txt_file_names(CORPUS)
-    text_cleaner_mapper(file_list, CORPUS)
+def index_clean_txt():  
+    file_list = get_cleaned_txt_file_names(None)
+    text_indexer_mapper(file_list, None)
 
-cleanup_raw_txt()
+index_clean_txt()

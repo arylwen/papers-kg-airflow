@@ -15,6 +15,12 @@ from metadata_utils import arxiv_metadata_search
 from metadata_utils import dynamodb_metadata_search
 from common_tasks import batch_splitter
 
+
+from dataset_utils import (
+    get_default_bucket,
+    get_corpus_base,
+)
+
 import logging
 logger = logging.getLogger(__name__)
 
@@ -96,10 +102,10 @@ def download_paper_dynamodb(paper_id, BUCKET, PDF_BASE):
         except Exception as e:
             print(e)
             logger.info(f'*************** GOOGLE STORAGE PAPER PDF MISSING: {paper_id} *******************')
-            return f'{paper_id}-missing'
+            return f'{paper_id}-missing-pdf'
     else:
         logger.info(f'*************** DYNAMODB PAPER METADATA MISSING: {paper_id} *******************')
-        return f'{paper_id}-missing'
+        return f'{paper_id}-missing-metadata'
     # arxiv throttling
     #import time
     #time.sleep(4)
@@ -111,9 +117,12 @@ def download_paper_batch_dynamodb(paper_id_list, BUCKET, PDF_BASE):
     for paper_id in paper_id_list:
         logger.info(f'processing paper: {paper_id}')
         paper_id_str = str(paper_id)
-        paper_id_str = paper_id_str.ljust(10, '0')
-        logger.info(f'processing paper: {paper_id_str}')
+        logger.info(f'searching metadata for paper: {paper_id_str}')
         paper = dynamodb_metadata_search(paper_id_str)
+        if not paper:
+            # did the paper lose a 0? TODO review how the csv is read
+            paper_id_str = paper_id_str.ljust(10, '0')
+            paper = dynamodb_metadata_search(paper_id_str)            
         if paper:
             try:
                 download_paper_google(paper, BUCKET, PDF_BASE)              
@@ -121,10 +130,12 @@ def download_paper_batch_dynamodb(paper_id_list, BUCKET, PDF_BASE):
             except Exception as e:
                 print(e)
                 logger.info(f'*************** GOOGLE STORAGE PAPER PDF MISSING: {paper_id} *******************')
-                result.append(f'{paper_id}-missing')
+                result.append(f'{paper_id}-missing-pdf')
+                raise e
         else:
             logger.info(f'*************** PAPER MISSING: {paper_id} *******************')
-            result.append(f'{paper_id}-missing')        
+            result.append(f'{paper_id}-missing-metadata')        
+            raise Exception(f'no metadata {paper_id}')
 
     return result
 
@@ -143,7 +154,52 @@ def reconcile(csv_name, papers):
     if has_missing:
         logger.info(f'deferring for next week: metadata or pdf missing for: {all_missing}')
     else:
-        logger.info('all papers processed, moving csv')
+        logger.info('all papers processed, moving csv {csv_name}')
+        parts = csv_name.split('/') 
+        corpus = parts[1] #TODO pass CORPUS as parameter
+        source_csv = f'{"/".join(parts[:3])}/{parts[-1]}'
+        target_csv = f'{"/".join(parts[:2])}/processed/{parts[-1]}'
+        logger.info(f'{source_csv} ***** {target_csv}')
+        source_conf = source_csv.split('.')[0].split(f'_{corpus}')[0]
+        target_conf = target_csv.split('.')[0].split(f'_{corpus}')[0]
+        logger.info(f'{source_conf} ***** {target_conf}')
+        #-------
+        s3_hook = S3Hook(aws_conn_id="minio_airflow")
+        if not s3_hook.check_for_key(source_csv, get_default_bucket()):
+            logger.info(f'csv already processed, skipping: {source_csv}')
+            return
+        
+        if not os.path.exists(csv_name):
+            csv_name = s3_hook.download_file(
+    		    key=source_csv, 
+    		    bucket_name=get_default_bucket(), 
+    		    local_path=f'{get_corpus_base(corpus)}/pending', 
+    		    preserve_file_name=True, 
+            ) #TODO
+        config_name = s3_hook.download_file(
+    		    key=source_conf, 
+    		    bucket_name=get_default_bucket(), 
+    		    local_path=f'{get_corpus_base(corpus)}/pending', 
+    		    preserve_file_name=True, 
+            ) #TODO
+        #upload csv
+        s3_hook.load_file(
+    		key=target_csv, 
+    		bucket_name=get_default_bucket(), 
+    		filename=csv_name, 
+    		replace=True, 
+            )
+        s3_hook.delete_objects(get_default_bucket(), source_csv)
+        #upload config
+        s3_hook.load_file(
+    		key=target_conf, 
+    		bucket_name=get_default_bucket(), 
+    		filename=config_name, 
+    		replace=True, 
+            )
+        s3_hook.delete_objects(get_default_bucket(), source_conf)
+
+
 
 @task
 def cleanup(csv_name, papers, BUCKET, CORPUS, CORPUS_BASE):

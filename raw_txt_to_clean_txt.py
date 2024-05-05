@@ -15,7 +15,7 @@ from lib.corpus_cleanup_tasks import (
 import logging
 logger = logging.getLogger(__name__)
 
-CORPUS = 'arxiv_cl'
+#CORPUS = 'aiml'
 
 DEFAULT_ARGS = {
     'owner': 'Airflow',
@@ -33,15 +33,18 @@ DEFAULT_ARGS = {
 	Download pdf files and upload them to S3
 '''
 @dag(
-    dag_id="raw_text_to_clean_text_arxiv_cl",
+    dag_id="raw_text_to_clean_text",
     default_args=DEFAULT_ARGS,
-    description="DAG for converting cleaning raw txt files for the arxiv_cl corpus.",
+    description="DAG for converting cleaning raw txt files for any corpus.",
     schedule=None,
     catchup=False,
-    max_active_runs=1
+    max_active_runs=1,
+    params={
+         "CORPUS": 'docs',
+     },
 )
 def cleanup_raw_txt():    
-    file_list = get_raw_txt_file_names(CORPUS)
-    text_cleaner_mapper(file_list, CORPUS)
+    file_list = get_raw_txt_file_names(None)
+    text_cleaner_mapper(file_list, None)
 
 cleanup_raw_txt()

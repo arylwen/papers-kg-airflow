@@ -125,7 +125,7 @@ def toots_to_csv(run_id, user_id, CORPUS, CORPUS_BASE, START_AT, END_AT):
     LATEST_TOOT = 0
     max_id = 0
 
-    while max_id < END_AT:
+    while max_id < int(END_AT):
         print(params)
         r = requests.get(URL, params=params)
         toots = json.loads(r.text)

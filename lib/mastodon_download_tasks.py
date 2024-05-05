@@ -103,6 +103,7 @@ def create_new_batch(corpus_file, CORPUS, BUCKET, corpus_properties, START_AT, c
     corpus_properties['start_at'] = LATEST
     if 'end_at' in corpus_properties:
         del corpus_properties['end_at']
+    if 'latest' in corpus_properties:
         del corpus_properties['latest']
     save_properties(corpus_properties, corpus_file)
     s3_hook.load_file(
